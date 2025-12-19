@@ -1,0 +1,19 @@
+[Unit]
+Description=OrangePiPwn USB Gadget Service
+After=network.target local-fs.target
+Before=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/usb-gadget-setup.sh start
+ExecStop=/usr/local/bin/usb-gadget-setup.sh stop
+StandardOutput=journal
+StandardError=journal
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

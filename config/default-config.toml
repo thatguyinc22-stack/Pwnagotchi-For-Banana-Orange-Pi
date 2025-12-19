@@ -1,0 +1,48 @@
+[system]
+mode = "pwnagotchi"
+hostname = "orangepipwn"
+auto_mode_switch = false
+
+[pwnagotchi]
+name = "orangepipwn"
+enabled = true
+config_file = "/etc/pwnagotchi/config.toml"
+display = "none"  # Options: none, waveshare_v2, oled, inky, etc.
+web_interface = true
+web_port = 8080
+
+[usb_gadget]
+enabled = false
+vendor_id = "0x1d6b"
+product_id = "0x0104"
+manufacturer = "Orange Pi"
+product = "OrangePiPwn MultiGadget"
+serial = "fedcba9876543210"
+
+[usb_gadget.hid]
+enabled = true
+payloads_dir = "/opt/orangepipwn/payloads/hid"
+auto_execute = false
+default_payload = ""
+
+[usb_gadget.mass_storage]
+enabled = true
+image_file = "/opt/orangepipwn/storage.img"
+image_size_mb = 64
+read_only = false
+
+[usb_gadget.network]
+enabled = true
+host_addr = "48:6f:73:74:50:43"
+dev_addr = "42:61:64:55:53:42"
+ip_address = "10.0.0.1"
+subnet = 24
+dhcp_range_start = "10.0.0.2"
+dhcp_range_end = "10.0.0.254"
+internet_sharing = true
+
+[logging]
+level = "INFO"
+file = "/var/log/orangepipwn/orangepipwn.log"
+max_size_mb = 10
+backup_count = 5

@@ -1,0 +1,388 @@
+#!/bin/bash
+#
+# OrangePiPwn Mode Switcher
+# Switches between Pwnagotchi WiFi auditing mode and USB Gadget attack mode
+#
+# Usage: orangepipwn-mode [set|status|config] [pwnagotchi|usb-gadget]
+#
+
+set -e
+
+# Configuration
+CONFIG_FILE="/etc/orangepipwn/config.toml"
+STATE_FILE="/var/lib/orangepipwn/current_mode"
+LOG_FILE="/var/log/orangepipwn/mode-switch.log"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+    log "INFO: $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    log "SUCCESS: $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+    log "WARNING: $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+    log "ERROR: $1"
+}
+
+# Check if running as root
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        log_error "This script must be run as root"
+        exit 1
+    fi
+}
+
+# Create necessary directories
+setup_directories() {
+    mkdir -p /etc/orangepipwn
+    mkdir -p /var/lib/orangepipwn
+    mkdir -p /var/log/orangepipwn
+    mkdir -p /opt/orangepipwn/payloads/{hid,mass_storage,network}
+}
+
+# Get current mode
+get_current_mode() {
+    if [[ -f "$STATE_FILE" ]]; then
+        cat "$STATE_FILE"
+    else
+        echo "none"
+    fi
+}
+
+# Set mode in state file
+set_mode_state() {
+    local mode=$1
+    echo "$mode" > "$STATE_FILE"
+}
+
+# Stop all services
+stop_all_services() {
+    log_info "Stopping all OrangePiPwn services..."
+    
+    systemctl stop pwnagotchi.service 2>/dev/null || true
+    systemctl stop bettercap.service 2>/dev/null || true
+    systemctl stop pwngrid-peer.service 2>/dev/null || true
+    systemctl stop usb-gadget.service 2>/dev/null || true
+    
+    log_success "Services stopped"
+}
+
+# Configure Pwnagotchi mode
+configure_pwnagotchi_mode() {
+    log_info "Configuring Pwnagotchi mode..."
+    
+    # Stop USB gadget if running
+    if [[ -f /sys/kernel/config/usb_gadget/orangepipwn ]]; then
+        log_info "Removing USB gadget configuration..."
+        echo "" > /sys/kernel/config/usb_gadget/orangepipwn/UDC || true
+        rm -rf /sys/kernel/config/usb_gadget/orangepipwn 2>/dev/null || true
+    fi
+    
+    # Unload USB gadget modules
+    modprobe -r g_ether 2>/dev/null || true
+    modprobe -r g_serial 2>/dev/null || true
+    modprobe -r usb_f_acm 2>/dev/null || true
+    modprobe -r usb_f_rndis 2>/dev/null || true
+    
+    # Load WiFi modules
+    log_info "Loading WiFi modules..."
+    modprobe cfg80211 || log_warning "cfg80211 already loaded"
+    modprobe mac80211 || log_warning "mac80211 already loaded"
+    
+    # Set WiFi interface to monitor mode
+    if ip link show wlan0 &>/dev/null; then
+        log_info "Configuring wlan0 for monitor mode..."
+        ip link set wlan0 down 2>/dev/null || true
+        iw dev wlan0 set type monitor 2>/dev/null || {
+            log_warning "Could not set monitor mode directly, will use monstart script"
+        }
+    else
+        log_warning "wlan0 interface not found"
+    fi
+    
+    # Enable Pwnagotchi services
+    log_info "Enabling Pwnagotchi services..."
+    systemctl enable pwnagotchi.service 2>/dev/null || log_warning "pwnagotchi.service not found"
+    systemctl enable bettercap.service 2>/dev/null || log_warning "bettercap.service not found"
+    
+    # Disable USB gadget service
+    systemctl disable usb-gadget.service 2>/dev/null || true
+    
+    set_mode_state "pwnagotchi"
+    log_success "Pwnagotchi mode configured"
+}
+
+# Configure USB Gadget mode
+configure_usb_gadget_mode() {
+    log_info "Configuring USB Gadget mode..."
+    
+    # Stop WiFi monitor mode
+    if ip link show mon0 &>/dev/null; then
+        log_info "Removing monitor interface..."
+        ip link set mon0 down 2>/dev/null || true
+        iw dev mon0 del 2>/dev/null || true
+    fi
+    
+    if ip link show wlan0 &>/dev/null; then
+        log_info "Setting wlan0 to managed mode..."
+        ip link set wlan0 down 2>/dev/null || true
+        iw dev wlan0 set type managed 2>/dev/null || true
+        ip link set wlan0 up 2>/dev/null || true
+    fi
+    
+    # Load USB gadget modules
+    log_info "Loading USB gadget modules..."
+    modprobe dwc2 || log_error "Failed to load dwc2 module"
+    modprobe libcomposite || log_error "Failed to load libcomposite module"
+    
+    # Disable Pwnagotchi services
+    systemctl disable pwnagotchi.service 2>/dev/null || true
+    systemctl disable bettercap.service 2>/dev/null || true
+    
+    # Enable USB gadget service
+    log_info "Enabling USB Gadget service..."
+    systemctl enable usb-gadget.service 2>/dev/null || log_warning "usb-gadget.service not found"
+    
+    set_mode_state "usb-gadget"
+    log_success "USB Gadget mode configured"
+}
+
+# Display status
+show_status() {
+    local current_mode=$(get_current_mode)
+    
+    echo ""
+    echo "======================================"
+    echo "   OrangePiPwn Status"
+    echo "======================================"
+    echo ""
+    echo -e "Current Mode: ${GREEN}$current_mode${NC}"
+    echo ""
+    
+    echo "Service Status:"
+    echo "---------------"
+    
+    if systemctl is-active --quiet pwnagotchi.service; then
+        echo -e "Pwnagotchi:   ${GREEN}running${NC}"
+    else
+        echo -e "Pwnagotchi:   ${RED}stopped${NC}"
+    fi
+    
+    if systemctl is-active --quiet bettercap.service; then
+        echo -e "Bettercap:    ${GREEN}running${NC}"
+    else
+        echo -e "Bettercap:    ${RED}stopped${NC}"
+    fi
+    
+    if systemctl is-active --quiet usb-gadget.service; then
+        echo -e "USB Gadget:   ${GREEN}running${NC}"
+    else
+        echo -e "USB Gadget:   ${RED}stopped${NC}"
+    fi
+    
+    echo ""
+    echo "Network Interfaces:"
+    echo "-------------------"
+    
+    if ip link show mon0 &>/dev/null; then
+        echo -e "mon0:         ${GREEN}present${NC} (monitor mode)"
+    else
+        echo -e "mon0:         ${RED}absent${NC}"
+    fi
+    
+    if ip link show wlan0 &>/dev/null; then
+        local wlan_type=$(iw dev wlan0 info 2>/dev/null | grep type | awk '{print $2}')
+        echo -e "wlan0:        ${GREEN}present${NC} (type: $wlan_type)"
+    else
+        echo -e "wlan0:        ${RED}absent${NC}"
+    fi
+    
+    if ip link show usb0 &>/dev/null; then
+        echo -e "usb0:         ${GREEN}present${NC} (USB gadget)"
+    else
+        echo -e "usb0:         ${RED}absent${NC}"
+    fi
+    
+    echo ""
+    echo "USB Gadget:"
+    echo "-----------"
+    if [[ -d /sys/kernel/config/usb_gadget/orangepipwn ]]; then
+        echo -e "Configuration: ${GREEN}loaded${NC}"
+        if [[ -f /sys/kernel/config/usb_gadget/orangepipwn/UDC ]]; then
+            local udc=$(cat /sys/kernel/config/usb_gadget/orangepipwn/UDC)
+            if [[ -n "$udc" ]]; then
+                echo -e "UDC:          ${GREEN}$udc${NC}"
+            else
+                echo -e "UDC:          ${YELLOW}not bound${NC}"
+            fi
+        fi
+    else
+        echo -e "Configuration: ${RED}not loaded${NC}"
+    fi
+    
+    echo ""
+    echo "======================================"
+    echo ""
+}
+
+# Display configuration
+show_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        echo "Current Configuration:"
+        echo "======================"
+        cat "$CONFIG_FILE"
+    else
+        log_warning "Configuration file not found: $CONFIG_FILE"
+        log_info "Creating default configuration..."
+        create_default_config
+    fi
+}
+
+# Create default configuration
+create_default_config() {
+    cat > "$CONFIG_FILE" << 'EOF'
+[system]
+mode = "pwnagotchi"
+hostname = "orangepipwn"
+auto_mode_switch = false
+
+[pwnagotchi]
+name = "orangepipwn"
+enabled = true
+config_file = "/etc/pwnagotchi/config.toml"
+display = "none"
+
+[usb_gadget]
+enabled = false
+vendor_id = "0x1d6b"
+product_id = "0x0104"
+manufacturer = "Orange Pi"
+product = "OrangePiPwn MultiGadget"
+serial = "fedcba9876543210"
+
+[usb_gadget.hid]
+enabled = true
+payloads_dir = "/opt/orangepipwn/payloads/hid"
+
+[usb_gadget.mass_storage]
+enabled = false
+image_file = "/opt/orangepipwn/storage.img"
+
+[usb_gadget.network]
+enabled = true
+host_addr = "48:6f:73:74:50:43"
+dev_addr = "42:61:64:55:53:42"
+EOF
+    
+    log_success "Default configuration created at $CONFIG_FILE"
+}
+
+# Main command dispatcher
+main() {
+    local command=${1:-status}
+    local mode=${2:-}
+    
+    setup_directories
+    
+    case "$command" in
+        set)
+            check_root
+            if [[ -z "$mode" ]]; then
+                log_error "Mode required: pwnagotchi or usb-gadget"
+                echo "Usage: $0 set [pwnagotchi|usb-gadget]"
+                exit 1
+            fi
+            
+            case "$mode" in
+                pwnagotchi)
+                    log_info "Switching to Pwnagotchi mode..."
+                    stop_all_services
+                    configure_pwnagotchi_mode
+                    log_success "Mode switched to Pwnagotchi"
+                    log_warning "Please reboot for changes to take full effect: sudo reboot"
+                    ;;
+                usb-gadget)
+                    log_info "Switching to USB Gadget mode..."
+                    stop_all_services
+                    configure_usb_gadget_mode
+                    log_success "Mode switched to USB Gadget"
+                    log_warning "Please reboot for changes to take full effect: sudo reboot"
+                    ;;
+                *)
+                    log_error "Invalid mode: $mode"
+                    echo "Valid modes: pwnagotchi, usb-gadget"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        
+        status)
+            show_status
+            ;;
+        
+        config)
+            show_config
+            ;;
+        
+        init)
+            check_root
+            log_info "Initializing OrangePiPwn..."
+            setup_directories
+            create_default_config
+            log_success "Initialization complete"
+            ;;
+        
+        help|--help|-h)
+            echo "OrangePiPwn Mode Switcher"
+            echo ""
+            echo "Usage: $0 [command] [options]"
+            echo ""
+            echo "Commands:"
+            echo "  set <mode>    Switch to specified mode (pwnagotchi or usb-gadget)"
+            echo "  status        Display current system status"
+            echo "  config        Display current configuration"
+            echo "  init          Initialize OrangePiPwn (first-time setup)"
+            echo "  help          Display this help message"
+            echo ""
+            echo "Modes:"
+            echo "  pwnagotchi    WiFi auditing and handshake capture"
+            echo "  usb-gadget    USB HID/mass storage/network attacks"
+            echo ""
+            echo "Examples:"
+            echo "  $0 set pwnagotchi    Switch to Pwnagotchi mode"
+            echo "  $0 set usb-gadget    Switch to USB Gadget mode"
+            echo "  $0 status            Show current status"
+            echo ""
+            ;;
+        
+        *)
+            log_error "Unknown command: $command"
+            echo "Use '$0 help' for usage information"
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function
+main "$@"

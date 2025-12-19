@@ -1,0 +1,201 @@
+# Makefile for OrangePiPwn Integration
+# Use this to help with installation and setup
+
+.PHONY: help install uninstall status switch-pwnagotchi switch-usb-gadget clean
+
+# Default target
+help:
+	@echo "OrangePiPwn Integration Makefile"
+	@echo "================================"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  install             - Install OrangePiPwn system"
+	@echo "  uninstall           - Remove OrangePiPwn system"
+	@echo "  status              - Show current mode and status"
+	@echo "  switch-pwnagotchi   - Switch to Pwnagotchi mode"
+	@echo "  switch-usb-gadget   - Switch to USB Gadget mode"
+	@echo "  clean               - Clean temporary files"
+	@echo ""
+	@echo "Examples:"
+	@echo "  sudo make install"
+	@echo "  make status"
+	@echo "  sudo make switch-pwnagotchi"
+	@echo ""
+
+# Install the complete system
+install:
+	@echo "Installing OrangePiPwn..."
+	@if [ "$$(id -u)" -ne 0 ]; then \
+		echo "Error: Must run as root (use sudo make install)"; \
+		exit 1; \
+	fi
+	
+	# Install scripts
+	@echo "Installing scripts..."
+	install -m 755 scripts/orangepipwn-mode /usr/local/bin/
+	install -m 755 scripts/usb-gadget-setup.sh /usr/local/bin/
+	
+	# Install systemd services
+	@echo "Installing systemd services..."
+	install -m 644 systemd/usb-gadget.service /etc/systemd/system/
+	@if [ -f builder/data/etc/systemd/system/pwnagotchi.service ]; then \
+		install -m 644 builder/data/etc/systemd/system/pwnagotchi.service /etc/systemd/system/; \
+	fi
+	@if [ -f builder/data/etc/systemd/system/bettercap.service ]; then \
+		install -m 644 builder/data/etc/systemd/system/bettercap.service /etc/systemd/system/; \
+	fi
+	
+	# Create directories
+	@echo "Creating directories..."
+	mkdir -p /etc/orangepipwn
+	mkdir -p /var/lib/orangepipwn
+	mkdir -p /var/log/orangepipwn
+	mkdir -p /opt/orangepipwn/payloads/hid
+	mkdir -p /opt/orangepipwn/payloads/mass_storage
+	mkdir -p /opt/orangepipwn/payloads/network
+	
+	# Install default configuration
+	@if [ ! -f /etc/orangepipwn/config.toml ]; then \
+		echo "Installing default configuration..."; \
+		install -m 644 config/default-config.toml /etc/orangepipwn/config.toml; \
+	else \
+		echo "Configuration already exists, skipping..."; \
+	fi
+	
+	# Reload systemd
+	systemctl daemon-reload
+	
+	@echo ""
+	@echo "Installation complete!"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Run: sudo orangepipwn-mode init"
+	@echo "  2. Choose mode: sudo orangepipwn-mode set [pwnagotchi|usb-gadget]"
+	@echo "  3. Reboot: sudo reboot"
+	@echo ""
+
+# Uninstall the system
+uninstall:
+	@echo "Uninstalling OrangePiPwn..."
+	@if [ "$$(id -u)" -ne 0 ]; then \
+		echo "Error: Must run as root (use sudo make uninstall)"; \
+		exit 1; \
+	fi
+	
+	# Stop and disable services
+	@echo "Stopping services..."
+	-systemctl stop usb-gadget.service
+	-systemctl stop pwnagotchi.service
+	-systemctl stop bettercap.service
+	-systemctl disable usb-gadget.service
+	-systemctl disable pwnagotchi.service
+	-systemctl disable bettercap.service
+	
+	# Remove files
+	@echo "Removing files..."
+	rm -f /usr/local/bin/orangepipwn-mode
+	rm -f /usr/local/bin/usb-gadget-setup.sh
+	rm -f /etc/systemd/system/usb-gadget.service
+	rm -f /etc/systemd/system/pwnagotchi.service
+	rm -f /etc/systemd/system/bettercap.service
+	
+	# Reload systemd
+	systemctl daemon-reload
+	
+	@echo ""
+	@echo "Uninstall complete!"
+	@echo ""
+	@echo "Note: Configuration and data files in /etc/orangepipwn,"
+	@echo "/var/lib/orangepipwn, and /opt/orangepipwn were preserved."
+	@echo "Remove manually if needed."
+	@echo ""
+
+# Show current status
+status:
+	@orangepipwn-mode status
+
+# Switch to Pwnagotchi mode
+switch-pwnagotchi:
+	@if [ "$$(id -u)" -ne 0 ]; then \
+		echo "Error: Must run as root (use sudo make switch-pwnagotchi)"; \
+		exit 1; \
+	fi
+	orangepipwn-mode set pwnagotchi
+	@echo ""
+	@echo "Switched to Pwnagotchi mode"
+	@echo "Reboot to activate: sudo reboot"
+	@echo ""
+
+# Switch to USB Gadget mode
+switch-usb-gadget:
+	@if [ "$$(id -u)" -ne 0 ]; then \
+		echo "Error: Must run as root (use sudo make switch-usb-gadget)"; \
+		exit 1; \
+	fi
+	orangepipwn-mode set usb-gadget
+	@echo ""
+	@echo "Switched to USB Gadget mode"
+	@echo "Reboot to activate: sudo reboot"
+	@echo ""
+
+# Clean temporary files
+clean:
+	@echo "Cleaning temporary files..."
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*~" -delete
+	@echo "Clean complete!"
+
+# Development targets
+
+.PHONY: dev-setup test-mode-switch test-usb-gadget test-pwnagotchi
+
+# Setup development environment
+dev-setup:
+	@echo "Setting up development environment..."
+	pip3 install -r requirements.txt
+	@echo "Development environment ready!"
+
+# Test mode switching (dry run)
+test-mode-switch:
+	@echo "Testing mode switch functionality..."
+	@echo "Current mode:"
+	@orangepipwn-mode status
+	@echo ""
+	@echo "To actually switch modes, use:"
+	@echo "  sudo make switch-pwnagotchi"
+	@echo "  sudo make switch-usb-gadget"
+
+# Test USB gadget configuration
+test-usb-gadget:
+	@if [ "$$(id -u)" -ne 0 ]; then \
+		echo "Error: Must run as root (use sudo make test-usb-gadget)"; \
+		exit 1; \
+	fi
+	@echo "Testing USB gadget configuration..."
+	@echo ""
+	@echo "Checking USB controller..."
+	ls /sys/class/udc/ || echo "No UDC device found!"
+	@echo ""
+	@echo "Checking modules..."
+	lsmod | grep -E "dwc2|libcomposite" || echo "USB gadget modules not loaded"
+	@echo ""
+	@echo "Current USB gadget status:"
+	@usb-gadget-setup.sh status || echo "USB gadget not configured"
+
+# Test Pwnagotchi prerequisites
+test-pwnagotchi:
+	@echo "Testing Pwnagotchi prerequisites..."
+	@echo ""
+	@echo "Checking WiFi interface..."
+	ip link show wlan0 || echo "wlan0 not found!"
+	@echo ""
+	@echo "Checking monitor mode support..."
+	iw list | grep -A 5 "Supported interface modes" || echo "Cannot check WiFi capabilities"
+	@echo ""
+	@echo "Checking bettercap..."
+	which bettercap || echo "bettercap not installed!"
+	@echo ""
+	@echo "Checking Python packages..."
+	python3 -c "import scapy; print('scapy: OK')" || echo "scapy not installed"
+	python3 -c "import flask; print('flask: OK')" || echo "flask not installed"
