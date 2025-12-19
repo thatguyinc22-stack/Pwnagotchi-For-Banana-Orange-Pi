@@ -349,6 +349,33 @@ zorangepipwn/
 └── ... (rest of your files)
 ```
 
+## Submodule Notes
+
+This repository now includes `zorangepipwn` as a Git submodule under `zorangepipwn/`.
+
+- To clone and initialize with submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/Fikolmij/Pwnagotchi-For-Banana-Orange-Pi.git
+# or if already cloned:
+git submodule update --init --recursive
+```
+
+- To pull updates from the submodule's remote:
+
+```bash
+cd zorangepipwn
+git fetch origin
+git checkout main
+git pull
+cd ..
+git add zorangepipwn
+git commit -m "Update zorangepipwn submodule to latest"
+```
+
+- If you prefer to make `zorangepipwn` changes as a subtree or merged copy instead of a submodule, see the integration plan for alternatives.
+
+
 ---
 
 ## Ready to Start?

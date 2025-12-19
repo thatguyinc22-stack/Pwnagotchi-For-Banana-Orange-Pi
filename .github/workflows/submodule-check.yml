@@ -1,0 +1,28 @@
+name: Submodule Check
+
+on:
+  push:
+    branches:
+      - feature/add-zorangepipwn
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  check-submodule:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Validate submodule directory exists
+        run: |
+          if [ ! -d "zorangepipwn" ]; then
+            echo "Submodule 'zorangepipwn' not found"; exit 1
+          fi
+          echo "Submodule present"
+
+      - name: Print submodule status
+        run: git submodule status --recursive
