@@ -1,0 +1,35 @@
+# Pwnagotchi Switcher Configuration Example
+# 
+# This is an example configuration file for advanced users who want to
+# customize the behavior of the Pwnagotchi Mode Switcher.
+#
+# Copy this file to /etc/pwnagotchi-switcher.conf to use it.
+
+[general]
+# Default mode to switch to on system boot
+# Options: auto, ai, manu
+# default_mode = auto
+
+# Enable verbose logging
+# verbose = false
+
+[paths]
+# Path to the AUTO mode flag file
+# auto_flag = /root/.pwnagotchi-auto
+
+# Path to Pwnagotchi configuration
+# config_path = /etc/pwnagotchi/config.toml
+
+[service]
+# Pwnagotchi service name
+# service_name = pwnagotchi
+
+# Automatically restart service after mode change
+# auto_restart = false
+
+[notifications]
+# Enable system notifications (requires libnotify)
+# enable_notifications = false
+
+# Show confirmation prompts before switching modes
+# confirm_before_switch = true
