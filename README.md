@@ -26,6 +26,42 @@ Multiple units within close physical proximity can "talk" to each other, adverti
 Fikolmij's/Dal's changes:
 Changes made to stop bootloops on Banana Pi and Orange Pi. Removed all calls to brcm and led as we don't install nexmon (yet) and the led isn't compatible on most boards. Also removed the numpy requirement to make the install instructions easier. Added correct jinja2, itsdangerous and Werkzeug to requirements.
 
+## Pwnagotchi Mode Switcher
+
+A utility tool has been added to easily switch between Pwnagotchi operational modes on Banana Pi and Orange Pi devices. The switcher is located in the `/scripts/` directory and provides a simple command-line interface to manage your Pwnagotchi's mode.
+
+### Available Modes
+
+- **AUTO**: Automatic mode for passive WiFi handshake collection
+- **AI**: AI-powered mode with reinforcement learning
+- **MANU**: Manual mode for management and maintenance
+
+### Quick Usage
+
+```bash
+# Check current mode and status
+sudo python3 scripts/pwnagotchi-switcher.py status
+
+# Switch to AUTO mode
+sudo python3 scripts/pwnagotchi-switcher.py auto
+
+# Switch to AI mode
+sudo python3 scripts/pwnagotchi-switcher.py ai
+
+# Restart the pwnagotchi service
+sudo python3 scripts/pwnagotchi-switcher.py restart
+```
+
+For detailed usage instructions, configuration options, and troubleshooting, see [USAGE.md](USAGE.md).
+
+To install the switcher as a system-wide command, run the installation script:
+```bash
+cd scripts
+sudo bash install.sh
+```
+
+After installation, you can use `pwn-switch` command instead of the full path.
+
 ## Documentation
 
 https://www.pwnagotchi.ai
